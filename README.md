@@ -1,3 +1,4 @@
+* このコードはpub.devに公開していないパッケージとなる
 
 # Firestoreクライアントクラスの構成
 ![](./doc/svg/firestore_arch.drawio.svg)
