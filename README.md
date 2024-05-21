@@ -1,39 +1,100 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages).
+# Firestoreクライアントクラスの構成
+![](./doc/svg/firestore_arch.drawio.svg)
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages).
--->
+* 本構成の主旨
+  * Firebaseはスキーマレスのため、想定と異なったパス、コレクション名、フィールド名、型でデータを生成・更新してもエラーにならない。
+  * そのため、コード側でなるべくこれらのミスを軽減・検出できる枠組みを提供している。
+  * 具体的には
+    * 想定する処理をパラメータ群として事前に定義しておくことを強制
+      * 個別にFirestore SDKのAPIに引数として渡すのではなくあらかじめ定義したパラメータオブジェクトを使い回す構成とさせている
+    * コレクションの親子関係、コレクション名、フィールド、変換処理(ドキュメント<->データ)を抽象クラスに基づいて事前に定義しておく。
+    * ドキュメントIDの情報はマップ（コレクション：ID）として実行時に渡される
+    * 実行時エラーを発生
+      * 定義したフィールドがドキュメントに含まれない場合
+      * 定義されていないフィールドがドキュメントに含まれている場合
+      * 定義されていないフィールドがクエリの条件に含まれている場合
+      * 定義された親子関係と一致しないドキュメントIDのマップ
+  * 以下はクライアントクラスの処理では保証されない
+    * 各フィールドの型の正当性
+      * 変換処理の実装に依存
+    * 実行時に取得や更新が正常に動作すること
+      * セキュリティルールに依存
 
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+* 本構成ではデータの取得として以下の5種類のAPIを提供する  
+  * ドキュメントの取得
+  * ドキュメントの取得(ストリーム)
+  * コレクションの取得
+  * コレクションの取得(ストリーム)
+  * ドキュメントの生成もしくは更新
+  * ドキュメントの削除
 
-## Features
+* APIの呼び出しには以下のオブジェクトを引数として渡す必要がある。
+  |オブジェクト|オブジェクトの内容|引数として渡すタイミング|
+  |-|-|-|
+  |Firestoreインスタンス *1 |Firebase SDKによって取得できるオブジェクト(シングルトン)|コンストラクタ呼び出し時|
+  |パラメータ群|抽象クラスを継承したもの。<br/>コレクションの取得、ドキュメントの取得/生成・更新 の 2種類 が存在する|実行時|
+  |ストリームハンドラー<br/>※ ストリームのAPIのみ | ストリームからデータを受信した際のハンドリングを行うためのコールバック |実行時|
+  |エラーハンドラー | ストリームの場合はエラーをストリームから受領時、<br/>非ストリームの場合は実行時のエラーのハンドリング（必要に応じてエラーを加工して返す）するコールバック |実行時|
+  * *1 本構成では、テストのためにFirestoreインスタンスをインジェクションできるようにした。
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+* パラメータ群の内容は下記の通り。
+  ||内容|ドキュメント取得|ドキュメント取得<br/>(ストリーム)|コレクション取得|コレクション取得<br/>(ストリーム)|生成・更新|削除|
+  |-|-|-|-|-|-|-|-|
+  |コレクション|インターフェースを実装したもの|o|o|o|o|o|o|
+  |ドキュメントIDマップ|コレクションパス内のドキュメントIDのマップ(コレクション:ID)|o|o|o|o|o|o|
+  |Data to firestore|オブジェクトからFirestoreに登録するデータ(json)へ変換する|x|x|x|x|o|x|
+  |Firestore to data|Firestoreのデータ(json)からオブジェクトへ変換する|o|o|o|o|x|x|
+  |クエリパラメータ|クエリで利用するパラメータ<br/>FirestoreのQueryクラスで指定できる条件のラッパー|x|x|o|o|x|x|
 
-## Getting started
+* APIが返すオブジェクトは下記の通り
+  ||ドキュメント取得|ドキュメント取得<br/>(ストリーム)|コレクション取得|コレクション取得<br/>(ストリーム)|生成・更新|削除|
+  |-|-|-|-|-|-|-|
+  |データ(非ストリーム)|単体|x|リスト形式|x|x|x|
+  |エラー(非ストリーム)|o|x|o|x|x|x|
+  |サブスクリプション|x|o|x|o|x|x|
+ 
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+# コレクションの親子関係 と パスの構築
+* 各コレクションの定義時に親となるコレクションを指定することができる。
+* API実行時にコレクションと親コレクションの各ドキュメントIDをマップとして指定できる。
+* 実行時には、上記の情報を使用してコレクションのパスが構築される。
+* 親子関係にないコレクションがマップに含まれる場合は実行時エラーとなる。
+## 例 
+* 以下のコレクションパスの定義があるとする
+  |定義名|コレクション名|親|
+  |-|-|-|
+  |C1|Collection1|-|
+  |C2|Collection2|C1|
+  |C3|Collection3|C2|
+* 実行時に指定したパス定義とドキュメントIDマップ、および実際に構成されるパスの例は下記の通りである。
+  |パス定義|ドキュメントIDマップ|実際のドキュメントパス|実際のコレクションパス|
+  |-|-|-|-|
+  |C1|{}|/Collection1/(自動採番)|/Collection1|
+  |C2|{}|/Collection1/(自動採番)/Collection2/(自動採番)|/Collection1/(自動採番)/Collection2|
+  |C3|{C1:"xxx", C2:"yyy"}|/Collection1/xxx/Collection2/yyy/Collection3/(自動採番)|/Collection1/xxx/Collection2/yyy/Collection3|
 
-## Usage
+# コレクションフィールド
+* 以下を実現するためのインターフェースとなる。
+  * あらかじめ定義したフィールド名を使い回しさせる（タイポミスによる不具合の軽減）
+    * データ<->Jsonの変換時
+    * クエリ条件指定
+  * ドキュメント内のフィールドの不足・過剰のチェック
+    * 更新: データ -> ドキュメントへ変換後の ドキュメント内のフィールド
+    * 参照: 取得したドキュメント内のフィールド
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+# クエリ構築
+* コレクションフィールドでクエリ条件を指定させる為に、本クライアントクラスでSDKのQuery系のAPIをラップしたものとなる。
+* 以下は指定不可。
+  * endAtDocument
+  * endBeforeDocument
+  * startAfterDocument
+  * startAtDocument
+  * withConverter
+* コレクションのフィールド定義に無いフィールドを指定すると実行時エラーとなる。
 
-```dart
-const like = 'sample';
-```
+# ドキュメントのフィールドの照合
+* ドキュメントの取得時・更新時にドキュメント内のフィールドと、定義されたフィールドの照合を行う。
 
-## Additional information
+![](./doc/svg/firestore_client_field_check.drawio.svg)
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.

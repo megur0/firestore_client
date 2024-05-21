@@ -2,16 +2,23 @@ name: firestore_client
 description: "A new Flutter package project."
 version: 0.0.1
 homepage:
+publish_to: none
 
 environment:
   sdk: '>=3.2.6 <4.0.0'
   flutter: ">=1.17.0"
 
 dependencies:
+  cloud_firestore: ^4.7.0
+
+  firebase_stub:
+    path: ../firebase_stub
+
   flutter:
     sdk: flutter
 
 dev_dependencies:
+  clock: ^1.1.1
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
