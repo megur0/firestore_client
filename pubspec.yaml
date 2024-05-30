@@ -11,8 +11,10 @@ environment:
 dependencies:
   cloud_firestore: ^4.7.0
 
-  firebase_stub:
-    path: ../firebase_stub
+  cloud_firestore_stub:
+    git:
+      url: https://github.com/megur0/cloud_firestore_stub
+      # ref: 891a160
 
   flutter:
     sdk: flutter

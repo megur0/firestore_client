@@ -1,6 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_stub/firebase_stub.dart';
+import 'package:cloud_firestore_stub/firebase_stub.dart';
 import 'package:firestore_client/firestore_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
